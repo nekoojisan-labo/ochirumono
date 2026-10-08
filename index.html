@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="data:,">
+<title>テトリス</title>
+<style>
+/* 色・余白・角丸・影は docs/mock/index.html の :root と同じ値（ライト固定） */
+:root{
+  --c-bg:#F2F1ED; --c-surface:#FFFFFF; --c-text:#23211C; --c-muted:#6B675E;
+  --c-accent:#1F5E4C; --c-danger:#A63A28; --c-done:#3F6B4A; --c-line:#DEDBD2;
+  --s-1:.25rem; --s-2:.5rem; --s-3:.75rem; --s-4:1.5rem; --s-5:2.5rem; --s-6:4rem;
+  --r-0:0; --r-1:3px;
+  --f-display:"Hiragino Sans","Yu Gothic UI",Meiryo,system-ui,sans-serif;
+  --f-body:"Hiragino Sans","Yu Gothic UI",Meiryo,system-ui,sans-serif;
+  --f-mono:"Cascadia Mono",Consolas,"Hiragino Sans",monospace;
+  --fs-1:.75rem; --fs-2:.875rem; --fs-3:1rem; --fs-4:1.5rem;
+  --e-1:0 1px 2px rgba(35,33,28,.08);
+  --cell:clamp(14px,3.4vw,26px);
+  --piece-I:#2C7A8C; --piece-O:#B8912A; --piece-T:#6B4A8C; --piece-S:#3F6B4A;
+  --piece-Z:#A63A28; --piece-J:#2F4F8A; --piece-L:#C2702A;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--c-bg);color:var(--c-text);font-family:var(--f-body);font-size:var(--fs-2);line-height:1.5}
+body{padding:var(--s-3) 16px;min-height:100vh;overflow-x:hidden}
+.app{max-width:960px;margin:0 auto;display:grid;gap:var(--s-3)}
+
+/* 上段 */
+.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s-2)}
+.bar__title{font-family:var(--f-display);font-size:var(--fs-3);font-weight:700;margin:0}
+.bar__mode{color:var(--c-muted);font-size:var(--fs-1)}
+
+/* 主要部 */
+.main{display:grid;grid-template-columns:150px auto 200px;gap:var(--s-3);align-items:start;justify-content:center}
+.col{display:grid;gap:var(--s-3);min-width:0}
+.col--board{min-width:0}
+.panel{background:var(--c-surface);border-radius:var(--r-1);box-shadow:var(--e-1);padding:var(--s-2) var(--s-3);min-width:0}
+.panel__label{font-size:var(--fs-1);color:var(--c-muted);letter-spacing:.04em;margin:0 0 var(--s-1)}
+.stat{display:flex;justify-content:space-between;gap:var(--s-2);align-items:baseline;border-bottom:1px solid var(--c-line);padding:var(--s-1) 0}
+.stat:last-child{border-bottom:0}
+.stat__k{color:var(--c-muted);font-size:var(--fs-1);white-space:nowrap}
+.stat__v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere;min-width:0}
+
+/* ネクスト・ホールド */
+.queue{display:grid;gap:var(--s-1);margin:0;padding:0;list-style:none}
+.chip{display:flex;align-items:center;gap:var(--s-2);font-family:var(--f-mono);min-height:1.5rem;overflow-wrap:anywhere}
+.sw{width:14px;height:14px;border-radius:2px;flex:none;background:var(--c-line)}
+.sw.is-I{background:var(--piece-I)} .sw.is-O{background:var(--piece-O)} .sw.is-T{background:var(--piece-T)}
+.sw.is-S{background:var(--piece-S)} .sw.is-Z{background:var(--piece-Z)} .sw.is-J{background:var(--piece-J)} .sw.is-L{background:var(--piece-L)}
+.chip__name{color:var(--c-text)}
+.chip--empty .chip__name{color:var(--c-muted)}
+
+/* 盤面 */
+.board-wrap{position:relative;background:var(--c-surface);padding:var(--s-2);border-radius:var(--r-1);box-shadow:var(--e-1);justify-self:center;max-width:100%}
+.board{display:grid;grid-template-columns:repeat(10,var(--cell));grid-template-rows:repeat(20,var(--cell));gap:1px;background:var(--c-line);border:1px solid var(--c-line)}
+.cell{background:var(--c-surface)}
+.cell.is-I{background:var(--piece-I)} .cell.is-O{background:var(--piece-O)} .cell.is-T{background:var(--piece-T)}
+.cell.is-S{background:var(--piece-S)} .cell.is-Z{background:var(--piece-Z)} .cell.is-J{background:var(--piece-J)} .cell.is-L{background:var(--piece-L)}
+.cell.is-ghost{background:transparent;outline:1px dashed var(--c-muted);outline-offset:-1px}
+
+/* 判定の表示（盤面の中央に短く出す） */
+.event{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);background:var(--c-surface);border:1px solid var(--c-accent);padding:var(--s-1) var(--s-2);font-family:var(--f-mono);font-weight:700;color:var(--c-accent);box-shadow:var(--e-1);width:max-content;max-width:calc(100% - 24px);text-align:center;overflow-wrap:anywhere;pointer-events:none}
+.event__sub{display:block;font-weight:400;color:var(--c-muted);font-size:var(--fs-1)}
+
+/* オーバーレイ（一時停止・ゲームオーバー・エラー） */
+.overlay{position:absolute;inset:var(--s-2);background:var(--c-bg);background:color-mix(in srgb,var(--c-bg) 94%,transparent);display:grid;place-items:center;padding:var(--s-3)}
+.overlay__card{max-width:320px;text-align:center}
+.overlay__title{font-family:var(--f-display);font-size:var(--fs-3);font-weight:700;margin:0;color:var(--c-accent);overflow-wrap:anywhere}
+.overlay__title--danger{color:var(--c-danger)}
+.overlay__body{margin:var(--s-1) 0 0;color:var(--c-muted);overflow-wrap:anywhere}
+.overlay__actions{display:flex;flex-wrap:wrap;gap:var(--s-2);justify-content:center;margin-top:var(--s-3)}
+
+/* ボタン */
+.btn{font:inherit;padding:var(--s-1) var(--s-3);background:var(--c-surface);color:var(--c-text);border:1px solid var(--c-line);border-radius:var(--r-1);cursor:pointer;box-shadow:var(--e-1)}
+.btn:hover{border-color:var(--c-accent)}
+.btn:focus-visible{outline:2px solid var(--c-accent);outline-offset:2px}
+.btn--primary{background:var(--c-accent);color:var(--c-surface);border-color:var(--c-accent)}
+
+/* 操作ヒント */
+.keys{display:flex;flex-wrap:wrap;gap:var(--s-1) var(--s-3);font-size:var(--fs-1);color:var(--c-muted);margin:0;padding:0;list-style:none}
+.keys kbd{font-family:var(--f-mono);border:1px solid var(--c-line);border-radius:var(--r-1);padding:0 var(--s-1);color:var(--c-text);background:var(--c-surface)}
+
+/* 狭い画面（幅720px未満）: 盤面を先頭に。横スクロールなし */
+@media (max-width:720px){
+  .main{grid-template-columns:1fr}
+  .col--board{order:-1}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="bar">
+    <div>
+      <h1 class="bar__title">テトリス</h1>
+      <div class="bar__mode">無限マラソン</div>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- 左：ホールドと進行 -->
+    <section class="col" aria-label="ホールドと進行状況">
+      <div class="panel">
+        <p class="panel__label">HOLD</p>
+        <ul class="queue" id="hold" aria-label="ホールド"></ul>
+      </div>
+      <div class="panel">
+        <p class="panel__label">進行</p>
+        <div class="stat"><span class="stat__k">レベル</span><span class="stat__v" id="v-level">1</span></div>
+        <div class="stat"><span class="stat__k">ライン</span><span class="stat__v" id="v-lines">0</span></div>
+        <div class="stat"><span class="stat__k">スコア</span><span class="stat__v" id="v-score">0</span></div>
+        <div class="stat"><span class="stat__k">経過</span><span class="stat__v" id="v-time">00:00</span></div>
+      </div>
+    </section>
+
+    <!-- 中央：盤面 -->
+    <section class="col col--board" aria-label="盤面">
+      <div class="board-wrap">
+        <div class="board" id="board" role="img" aria-label="盤面 10×20"></div>
+        <div class="event" id="event" hidden></div>
+        <div class="overlay" id="overlay" hidden>
+          <div class="overlay__card">
+            <p class="overlay__title" id="ov-title"></p>
+            <p class="overlay__body" id="ov-body"></p>
+            <div class="overlay__actions">
+              <button class="btn btn--primary" type="button" id="ov-primary">もう一度</button>
+              <button class="btn" type="button" id="ov-reset">最初から</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="keys" aria-label="操作">
+        <li><kbd>←</kbd><kbd>→</kbd> 移動</li>
+        <li><kbd>↑</kbd> 回転</li>
+        <li><kbd>Z</kbd> 逆回転</li>
+        <li><kbd>↓</kbd> 落下</li>
+        <li><kbd>Space</kbd> 即落下</li>
+        <li><kbd>C</kbd> ホールド</li>
+        <li><kbd>P</kbd> 一時停止</li>
+      </ul>
+    </section>
+
+    <!-- 右：ネクスト -->
+    <section class="col" aria-label="ネクスト">
+      <div class="panel">
+        <p class="panel__label">NEXT</p>
+        <ul class="queue" id="next" aria-label="ネクスト"></ul>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="src/core.js"></script>
+<script>
+(function () {
+  "use strict";
+  var C = window.TetrisCore;
+  var COLS = C.COLS, VIS = C.ROWS - C.HIDDEN, CELLS = VIS * COLS;
+
+  // 操作の状態。押下中（held）と押した瞬間（edge）を分けて core に渡す
+  var held = { left: false, right: false, down: false };
+  // 押して離すのが1フレーム未満でも取りこぼさないための待ち札（フレームが進んだ時に消費する）
+  var tap = { left: false, right: false, down: false };
+  var edge = { rotCW: false, rotCCW: false, hardDrop: false, hold: false, pause: false };
+  var ui = { fault: null };
+  var game = null, seed = 0, rafId = 0, last = null;
+
+  var HELD_KEYS = { ArrowLeft: "left", ArrowRight: "right", ArrowDown: "down" };
+  var EDGE_KEYS = { ArrowUp: "rotCW", z: "rotCCW", Z: "rotCCW", " ": "hardDrop", c: "hold", C: "hold", p: "pause", P: "pause" };
+
+  var TEXT = {
+    fault: { title: "表示が壊れました", body: "描画の途中で止まりました。もう一度で続けるか、最初からやり直せます。", primary: "もう一度", danger: true },
+    over: { title: "ゲームオーバー", primary: "もう一度", danger: false },
+    paused: { title: "一時停止中", body: "P キーでも再開できます。", primary: "再開", danger: false }
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+  function clock(sec) {
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+  }
+  function newSeed() { return Math.floor(Math.random() * 4294967296); }
+
+  var els = {
+    board: $("board"), level: $("v-level"), lines: $("v-lines"), score: $("v-score"), time: $("v-time"),
+    event: $("event"), overlay: $("overlay"), ovTitle: $("ov-title"), ovBody: $("ov-body"),
+    ovPrimary: $("ov-primary"), ovReset: $("ov-reset")
+  };
+
+  var cells = [];
+  for (var i = 0; i < CELLS; i++) {
+    var d = document.createElement("div");
+    d.className = "cell";
+    els.board.appendChild(d);
+    cells.push(d);
+  }
+
+  function makeChip(parent) {
+    var li = document.createElement("li"), sw = document.createElement("span"), nm = document.createElement("span");
+    nm.className = "chip__name";
+    li.appendChild(sw);
+    li.appendChild(nm);
+    parent.appendChild(li);
+    return { li: li, sw: sw, nm: nm };
+  }
+  function setChip(c, type) {
+    var lc = "chip" + (type ? "" : " chip--empty");
+    var sc = "sw" + (type ? " is-" + type : "");
+    if (c.li.className !== lc) c.li.className = lc;
+    if (c.sw.className !== sc) c.sw.className = sc;
+    setText(c.nm, type || "—");
+  }
+  var holdChip = makeChip($("hold"));
+  var nextChips = [];
+  for (var k = 0; k < C.NEXT_COUNT; k++) nextChips.push(makeChip($("next")));
+
+  var eventKey = "";
+  function renderEvent(ev) {
+    els.event.hidden = !ev;
+    var key = ev ? ev.title + " " + ev.sub : "";
+    if (key === eventKey) return;
+    eventKey = key;
+    els.event.textContent = "";
+    if (!ev) return;
+    els.event.appendChild(document.createTextNode(ev.title));
+    var sub = document.createElement("span");
+    sub.className = "event__sub";
+    sub.textContent = ev.sub;
+    els.event.appendChild(sub);
+  }
+
+  function overlayMode(st) {
+    if (st.fault) return "fault";
+    if (st.v.status === "over") return "over";
+    if (st.v.status === "paused") return "paused";
+    return "";
+  }
+
+  function renderOverlay(st) {
+    var mode = overlayMode(st);
+    els.overlay.hidden = !mode;
+    if (!mode) return;
+    var t = TEXT[mode], v = st.v;
+    setText(els.ovTitle, t.title);
+    var cls = "overlay__title" + (t.danger ? " overlay__title--danger" : "");
+    if (els.ovTitle.className !== cls) els.ovTitle.className = cls;
+    var body = mode === "over"
+      ? "スコア " + v.score.toLocaleString("en-US") + " ・ " + v.lines + " ライン ・ 経過 " + clock(v.elapsedSec)
+      : (t.body || "");
+    setText(els.ovBody, body);
+    setText(els.ovPrimary, t.primary);
+  }
+
+  // 表示は渡された状態（view と fault）だけから描く
+  function render(st) {
+    var v = st.v, ghost = [], idx, r, c;
+    for (idx = 0; idx < CELLS; idx++) ghost.push(false);
+    v.ghost.forEach(function (p) { ghost[p[0] * COLS + p[1]] = true; });
+    for (r = 0; r < VIS; r++) {
+      for (c = 0; c < COLS; c++) {
+        idx = r * COLS + c;
+        var t = v.rows[r][c];
+        var cls = t ? "cell is-" + t : (ghost[idx] ? "cell is-ghost" : "cell");
+        if (cells[idx].className !== cls) cells[idx].className = cls;
+      }
+    }
+    setText(els.level, String(v.level));
+    setText(els.lines, String(v.lines));
+    setText(els.score, v.score.toLocaleString("en-US"));
+    setText(els.time, clock(v.elapsedSec));
+    setChip(holdChip, v.hold);
+    for (var n = 0; n < nextChips.length; n++) setChip(nextChips[n], v.next[n] || null);
+    renderEvent(v.event);
+    renderOverlay(st);
+  }
+
+  function takeInput() {
+    var inp = {
+      left: held.left || tap.left, right: held.right || tap.right, down: held.down || tap.down,
+      rotCW: edge.rotCW, rotCCW: edge.rotCCW, hardDrop: edge.hardDrop, hold: edge.hold, pause: edge.pause
+    };
+    for (var key in edge) edge[key] = false;
+    return inp;
+  }
+
+  function clearTap() {
+    tap.left = tap.right = tap.down = false;
+  }
+
+  function tick(t) {
+    rafId = 0;
+    if (ui.fault) return;
+    var dt = last === null ? 0 : t - last;
+    last = t;
+    var before = game.steps;
+    C.step(game, takeInput(), dt);
+    // フレームが1つでも進んだら待ち札を使い切る（進まなかった時は次の更新まで持ち越す）
+    if (game.steps !== before) clearTap();
+    render({ v: C.getView(game), fault: ui.fault });
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function kick() {
+    if (!rafId && !ui.fault) rafId = requestAnimationFrame(tick);
+  }
+
+  // 開始・もう一度・最初から は必ずここを通る（エラー解除と時計のリセットを一箇所で行う）
+  function restart(s) {
+    seed = s;
+    game = C.createGame(seed);
+    ui.fault = null;
+    last = null;
+    // エラーや終了中に押されたキーを、新しいゲームへ持ち越さない
+    for (var key in edge) edge[key] = false;
+    clearTap();
+    kick();
+  }
+
+  function fail(msg) {
+    ui.fault = String(msg || "不明なエラー");
+    try {
+      render({ v: C.getView(game), fault: ui.fault });
+    } catch (e) {
+      els.overlay.hidden = false;
+      setText(els.ovTitle, TEXT.fault.title);
+      setText(els.ovBody, TEXT.fault.body);
+    }
+  }
+
+  window.addEventListener("error", function (e) {
+    fail(e.message || (e.error && e.error.message));
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    fail((e.reason && e.reason.message) || e.reason);
+  });
+
+  window.addEventListener("keydown", function (e) {
+    // Ctrl・Cmd・Alt との組み合わせ（Ctrl+P の印刷など）はブラウザに任せる
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (HELD_KEYS.hasOwnProperty(e.key)) {
+      e.preventDefault();
+      held[HELD_KEYS[e.key]] = true;
+      if (!e.repeat) tap[HELD_KEYS[e.key]] = true;
+    } else if (EDGE_KEYS.hasOwnProperty(e.key)) {
+      e.preventDefault();
+      if (!e.repeat) edge[EDGE_KEYS[e.key]] = true;
+    }
+  });
+  window.addEventListener("keyup", function (e) {
+    if (HELD_KEYS.hasOwnProperty(e.key)) {
+      e.preventDefault();
+      held[HELD_KEYS[e.key]] = false;
+    } else if (EDGE_KEYS.hasOwnProperty(e.key)) {
+      e.preventDefault();
+    }
+  });
+  window.addEventListener("blur", function () {
+    held.left = held.right = held.down = false;
+    clearTap();
+  });
+
+  els.ovPrimary.addEventListener("click", function () {
+    this.blur();
+    if (ui.fault || game.status === "over") restart(seed);
+    else edge.pause = true;
+  });
+  els.ovReset.addEventListener("click", function () {
+    this.blur();
+    restart(newSeed());
+  });
+
+  restart(newSeed());
+})();
+</script>
+</body>
+</html>

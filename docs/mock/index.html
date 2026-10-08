@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>テトリス モック（作業卓）</title>
+<style>
+/* 描画規約（mock-rendering.md）: 作業卓プリセット・ライト固定・生値禁止（本文は :root のトークンだけを使う） */
+:root{
+  --c-bg:#F2F1ED; --c-surface:#FFFFFF; --c-text:#23211C; --c-muted:#6B675E;
+  --c-accent:#1F5E4C; --c-danger:#A63A28; --c-done:#3F6B4A; --c-line:#DEDBD2;
+  --s-1:.25rem; --s-2:.5rem; --s-3:.75rem; --s-4:1.5rem; --s-5:2.5rem; --s-6:4rem;
+  --r-0:0; --r-1:3px;
+  --f-display:"Hiragino Sans","Yu Gothic UI",Meiryo,system-ui,sans-serif;
+  --f-body:"Hiragino Sans","Yu Gothic UI",Meiryo,system-ui,sans-serif;
+  --f-mono:"Cascadia Mono",Consolas,"Hiragino Sans",monospace;
+  --fs-1:.75rem; --fs-2:.875rem; --fs-3:1rem; --fs-4:1.5rem;
+  --e-1:0 1px 2px rgba(35,33,28,.08);
+  --cell:clamp(14px,3.4vw,26px);
+  /* ミノ色は識別のために使う。彩度を抑え、おもちゃっぽさを避ける */
+  --piece-I:#2C7A8C; --piece-O:#B8912A; --piece-T:#6B4A8C; --piece-S:#3F6B4A;
+  --piece-Z:#A63A28; --piece-J:#2F4F8A; --piece-L:#C2702A;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--c-bg);color:var(--c-text);font-family:var(--f-body);font-size:var(--fs-2);line-height:1.5}
+body{padding:var(--s-3) 16px;min-height:100vh;overflow-x:hidden}
+.app{max-width:960px;margin:0 auto;display:grid;gap:var(--s-3)}
+
+/* 上段 */
+.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s-2)}
+.bar__title{font-family:var(--f-display);font-size:var(--fs-3);font-weight:700;margin:0}
+.bar__mode{color:var(--c-muted);font-size:var(--fs-1)}
+.mockctl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-1)}
+.mockctl__label{color:var(--c-muted);font-size:var(--fs-1);margin-right:var(--s-1)}
+
+/* ボタン */
+.btn{font:inherit;padding:var(--s-1) var(--s-3);background:var(--c-surface);color:var(--c-text);border:1px solid var(--c-line);border-radius:var(--r-1);cursor:pointer;box-shadow:var(--e-1)}
+.btn:hover{border-color:var(--c-accent)}
+.btn:focus-visible{outline:2px solid var(--c-accent);outline-offset:2px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn[aria-pressed="true"]{background:var(--c-accent);color:var(--c-surface);border-color:var(--c-accent)}
+.btn--primary{background:var(--c-accent);color:var(--c-surface);border-color:var(--c-accent)}
+
+/* 主要部 */
+.main{display:grid;grid-template-columns:150px auto 200px;gap:var(--s-3);align-items:start;justify-content:center}
+.col{display:grid;gap:var(--s-3);min-width:0}
+.col--board{min-width:0}
+.panel{background:var(--c-surface);border-radius:var(--r-1);box-shadow:var(--e-1);padding:var(--s-2) var(--s-3);min-width:0}
+.panel__label{font-size:var(--fs-1);color:var(--c-muted);letter-spacing:.04em;margin:0 0 var(--s-1)}
+.stat{display:flex;justify-content:space-between;gap:var(--s-2);align-items:baseline;border-bottom:1px solid var(--c-line);padding:var(--s-1) 0}
+.stat:last-child{border-bottom:0}
+.stat__k{color:var(--c-muted);font-size:var(--fs-1);white-space:nowrap}
+.stat__v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere;min-width:0}
+
+/* ネクスト・ホールド */
+.queue{display:grid;gap:var(--s-1);margin:0;padding:0;list-style:none}
+.chip{display:flex;align-items:center;gap:var(--s-2);font-family:var(--f-mono);min-height:1.5rem}
+.sw{width:14px;height:14px;border-radius:2px;flex:none;background:var(--c-line)}
+.sw.is-I{background:var(--piece-I)} .sw.is-O{background:var(--piece-O)} .sw.is-T{background:var(--piece-T)}
+.sw.is-S{background:var(--piece-S)} .sw.is-Z{background:var(--piece-Z)} .sw.is-J{background:var(--piece-J)} .sw.is-L{background:var(--piece-L)}
+.chip__name{color:var(--c-text)}
+.chip--empty .chip__name{color:var(--c-muted)}
+
+/* 盤面 */
+.board-wrap{position:relative;background:var(--c-surface);padding:var(--s-2);border-radius:var(--r-1);box-shadow:var(--e-1);justify-self:center}
+.board{display:grid;grid-template-columns:repeat(10,var(--cell));grid-template-rows:repeat(20,var(--cell));gap:1px;background:var(--c-line);border:1px solid var(--c-line)}
+.cell{background:var(--c-surface)}
+.cell.is-I{background:var(--piece-I)} .cell.is-O{background:var(--piece-O)} .cell.is-T{background:var(--piece-T)}
+.cell.is-S{background:var(--piece-S)} .cell.is-Z{background:var(--piece-Z)} .cell.is-J{background:var(--piece-J)} .cell.is-L{background:var(--piece-L)}
+.cell.is-ghost{background:transparent;outline:1px dashed var(--c-muted);outline-offset:-1px}
+
+/* 判定の表示（シグネチャ＝盤面の中央に1瞬だけ出す判定名。モックでは静的に置く） */
+.event{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);background:var(--c-surface);border:1px solid var(--c-accent);padding:var(--s-1) var(--s-2);font-family:var(--f-mono);font-weight:700;color:var(--c-accent);box-shadow:var(--e-1);width:max-content;max-width:calc(100% - 24px);text-align:center;overflow-wrap:anywhere}
+.event__sub{display:block;font-weight:400;color:var(--c-muted);font-size:var(--fs-1)}
+
+/* 通知・エラー（戻り先を必ず持つ） */
+.notice{background:var(--c-surface);border-left:3px solid var(--c-danger);padding:var(--s-2) var(--s-3);box-shadow:var(--e-1);border-radius:var(--r-1)}
+.notice__title{color:var(--c-danger);font-weight:700;margin:0}
+.notice__body{margin:var(--s-1) 0 0;color:var(--c-muted)}
+.notice__actions{display:flex;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-2)}
+.overlay{position:absolute;inset:var(--s-2);background:rgba(242,241,237,.94);display:grid;place-items:center;padding:var(--s-3)}
+.overlay__card{max-width:320px;text-align:center}
+
+/* 操作ヒント */
+.keys{display:flex;flex-wrap:wrap;gap:var(--s-1) var(--s-3);font-size:var(--fs-1);color:var(--c-muted);margin:0;padding:0;list-style:none}
+.keys kbd{font-family:var(--f-mono);border:1px solid var(--c-line);border-radius:var(--r-1);padding:0 var(--s-1);color:var(--c-text);background:var(--c-surface)}
+.mocknote{font-size:var(--fs-1);color:var(--c-muted);margin:0}
+
+/* 狭い画面（幅720px未満）: 盤面を先頭に、横スクロールなし */
+@media (max-width:720px){
+  .main{grid-template-columns:1fr}
+  .col--board{order:-1}
+}
+</style>
+</head>
+<body data-state="empty">
+<div class="app">
+
+  <header class="bar">
+    <div>
+      <h1 class="bar__title">テトリス</h1>
+      <div class="bar__mode">無限マラソン（モック・作業卓）</div>
+    </div>
+    <div class="mockctl" role="group" aria-label="モック確認用の状態切り替え">
+      <span class="mockctl__label">モック用の切り替え（実装では消す）</span>
+      <button class="btn" type="button" data-set="empty" aria-pressed="true">初期・中立</button>
+      <button class="btn" type="button" data-set="fill" aria-pressed="false">充填（実例1）</button>
+      <button class="btn" type="button" data-set="stress" aria-pressed="false">破綻テスト</button>
+      <button class="btn" type="button" data-set="error" aria-pressed="false">エラー</button>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- 左：ホールドとステータス -->
+    <section class="col" aria-label="ホールドと進行状況">
+      <div class="panel">
+        <p class="panel__label">HOLD</p>
+        <div class="chip" id="hold"></div>
+      </div>
+      <div class="panel">
+        <p class="panel__label">進行</p>
+        <div class="stat"><span class="stat__k">レベル</span><span class="stat__v" id="v-level"></span></div>
+        <div class="stat"><span class="stat__k">ライン</span><span class="stat__v" id="v-lines"></span></div>
+        <div class="stat"><span class="stat__k">スコア</span><span class="stat__v" id="v-score"></span></div>
+        <div class="stat"><span class="stat__k">経過</span><span class="stat__v" id="v-time"></span></div>
+      </div>
+    </section>
+
+    <!-- 中央：盤面 -->
+    <section class="col col--board" aria-label="盤面">
+      <div class="board-wrap">
+        <div class="board" id="board" role="img" aria-label="盤面 10×20"></div>
+        <div class="event" id="event" hidden></div>
+        <div class="overlay" id="overlay" hidden>
+          <div class="overlay__card">
+            <p class="notice__title" id="ov-title"></p>
+            <p class="notice__body" id="ov-body"></p>
+            <div class="notice__actions">
+              <button class="btn btn--primary" type="button" id="ov-retry">もう一度</button>
+              <button class="btn" type="button" id="ov-reset">最初から</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="keys" aria-label="操作">
+        <li><kbd>←</kbd><kbd>→</kbd> 移動</li>
+        <li><kbd>↑</kbd> 回転</li>
+        <li><kbd>Z</kbd> 逆回転</li>
+        <li><kbd>↓</kbd> 落下</li>
+        <li><kbd>Space</kbd> 即落下</li>
+        <li><kbd>C</kbd> ホールド</li>
+        <li><kbd>P</kbd> 一時停止</li>
+      </ul>
+    </section>
+
+    <!-- 右：ネクスト -->
+    <section class="col" aria-label="ネクスト">
+      <div class="panel">
+        <p class="panel__label">NEXT</p>
+        <ul class="queue" id="next"></ul>
+      </div>
+      <div class="panel" id="notice-box" hidden>
+        <p class="notice__title" id="nt-title"></p>
+        <p class="notice__body" id="nt-body"></p>
+      </div>
+    </section>
+
+  </main>
+
+  <p class="mocknote">承認用のモック（静的）。ダークモードは採用しない。通知・エラーは戻り先（もう一度／最初から）を必ず持つ。</p>
+</div>
+
+<script>
+(function(){
+  var COLS = 10, ROWS = 20;
+
+  // 充填（G4 の実例1）: 底の段に積んだ状態。ghost は落下先の表示
+  var EMPTY = [];
+  var FILL = [
+    "..........","..........","..........","..........","..........",
+    "..........","..........","..........","..........","..........",
+    "..........","..........","..........","....OO....","..TTTOO...",
+    "LLLTZZSS..","LIIIIZZSJ.","LLLLZSSJJ.","JZZIIISSO.","JJJZZZTTT."
+  ];
+  var FILL_GHOST = [[11,4],[11,5],[11,6],[12,5]];
+
+  var STATES = {
+    empty: {
+      level:"1", lines:"0", score:"0", time:"00:00",
+      hold:null, next:[null,null,null,null,null],
+      board:EMPTY, ghosts:[], event:null, notice:null
+    },
+    fill: {
+      level:"5", lines:"46", score:"128,400", time:"05:12",
+      hold:"T", next:["S","Z","J","L","I"],
+      board:FILL, ghosts:FILL_GHOST,
+      event:{ title:"T-SPIN DOUBLE", sub:"+6,000 ・ B2B 開始" },
+      notice:null
+    },
+    stress: {
+      level:"20", lines:"9,999", score:"99,999,999", time:"99:59:59",
+      hold:"T", next:["I","I","I","I","I"],
+      board:FILL, ghosts:[],
+      event:{ title:"T-SPIN TRIPLE ・ B2B ・ COMBO 128 ・ PERFECT CLEAR（判定名が長いときの折り返しを見る）", sub:"+99,999,999（桁あふれの確認）" },
+      notice:null
+    },
+    error: {
+      level:"5", lines:"46", score:"128,400", time:"05:12",
+      hold:"T", next:["S","Z","J","L","I"],
+      board:FILL, ghosts:[],
+      event:null,
+      notice:{ title:"表示が壊れました", body:"描画の途中で止まりました。もう一度で続けるか、最初からやり直せます。" }
+    }
+  };
+
+  var $ = function(id){ return document.getElementById(id); };
+
+  function renderBoard(rows, ghosts){
+    var board = $("board");
+    board.textContent = "";
+    for (var r = 0; r < ROWS; r++){
+      for (var c = 0; c < COLS; c++){
+        var ch = (rows[r] && rows[r].charAt(c)) || ".";
+        var d = document.createElement("div");
+        d.className = "cell";
+        if (ch !== ".") d.classList.add("is-" + ch);
+        for (var i = 0; i < ghosts.length; i++){
+          if (ghosts[i][0] === r && ghosts[i][1] === c){ d.classList.add("is-ghost"); }
+        }
+        board.appendChild(d);
+      }
+    }
+  }
+
+  function chip(p){
+    var li = document.createElement("li");
+    li.className = "chip" + (p ? "" : " chip--empty");
+    var sw = document.createElement("span");
+    sw.className = "sw" + (p ? " is-" + p : "");
+    var name = document.createElement("span");
+    name.className = "chip__name";
+    name.textContent = p ? p : "—";
+    li.appendChild(sw); li.appendChild(name);
+    return li;
+  }
+
+  function renderState(key){
+    var s = STATES[key];
+    document.body.setAttribute("data-state", key);
+    $("v-level").textContent = s.level;
+    $("v-lines").textContent = s.lines;
+    $("v-score").textContent = s.score;
+    $("v-time").textContent = s.time;
+
+    var hold = $("hold");
+    hold.textContent = "";
+    hold.appendChild(chip(s.hold));
+    hold.className = "chip" + (s.hold ? "" : " chip--empty");
+
+    var next = $("next");
+    next.textContent = "";
+    s.next.forEach(function(p){ next.appendChild(chip(p)); });
+
+    renderBoard(s.board, s.ghosts);
+
+    var ev = $("event");
+    if (s.event){
+      ev.hidden = false;
+      ev.textContent = "";
+      ev.appendChild(document.createTextNode(s.event.title));
+      var sub = document.createElement("span");
+      sub.className = "event__sub";
+      sub.textContent = s.event.sub;
+      ev.appendChild(sub);
+    } else {
+      ev.hidden = true;
+    }
+
+    var ov = $("overlay");
+    if (s.notice && key === "error"){
+      ov.hidden = false;
+      $("ov-title").textContent = s.notice.title;
+      $("ov-body").textContent = s.notice.body;
+    } else {
+      ov.hidden = true;
+    }
+
+    var nb = $("notice-box");
+    if (s.notice && key !== "error"){
+      nb.hidden = false;
+      $("nt-title").textContent = s.notice.title;
+      $("nt-body").textContent = s.notice.body;
+    } else {
+      nb.hidden = true;
+    }
+
+    var btns = document.querySelectorAll("[data-set]");
+    for (var i = 0; i < btns.length; i++){
+      btns[i].setAttribute("aria-pressed", btns[i].getAttribute("data-set") === key ? "true" : "false");
+    }
+  }
+
+  // 切り替え（モック用）。URL の ?state= でも開ける
+  var btns = document.querySelectorAll("[data-set]");
+  for (var i = 0; i < btns.length; i++){
+    btns[i].addEventListener("click", function(e){
+      renderState(e.currentTarget.getAttribute("data-set"));
+    });
+  }
+  $("ov-retry").addEventListener("click", function(){ renderState("fill"); });
+  $("ov-reset").addEventListener("click", function(){ renderState("empty"); });
+
+  var q = (new URLSearchParams(location.search)).get("state");
+  renderState(STATES[q] ? q : "empty");
+})();
+</script>
+</body>
+</html>
