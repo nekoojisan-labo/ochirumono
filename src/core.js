@@ -20,7 +20,7 @@
   var BASIC_SCORE = [0, 100, 300, 500, 800];   // 通常の消去（0〜4ライン）。× レベル
   // Tスピン（消去0〜3ライン）。ミニは0〜2ライン（ミニ3ラインは不可能）。× レベル
   var TSPIN_SCORE = { mini: [100, 200, 400], full: [400, 800, 1200, 1600] };
-  var EVENT_TITLE = ["", "SINGLE", "DOUBLE", "TRIPLE", "TETRIS"];
+  var EVENT_TITLE = ["", "SINGLE", "DOUBLE", "TRIPLE", "QUAD"];   // 4ライン消しは商標を避けて QUAD と表示
   var TYPES = ["I", "O", "T", "S", "Z", "J", "L"];
   var ROT_NAME = ["0", "R", "2", "L"];
 
